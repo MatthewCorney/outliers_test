@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 from scipy.stats import t
-from src.outlier_tests.basic_logger import logger
+from outlier_tests.basic_logger import logger
 from typing import Union
 
 
