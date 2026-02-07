@@ -1,9 +1,8 @@
 """Rosner's generalized ESD test for detecting multiple outliers."""
 
-from typing import Any, Dict, Union
+from typing import Any, Dict, List, Union
 
 import numpy as np
-import pandas as pd
 from scipy.stats import t
 
 from outlier_tests.basic_logger import logger
@@ -24,8 +23,8 @@ def rosner_test(data: Union[np.ndarray, list], k: int = 3, alpha: float = 0.05) 
          * ``'stat'`` (numpy.ndarray): R_i values (test statistics) for each iteration.
          * ``'crit_value'`` (numpy.ndarray): Lambda_i values (critical values).
          * ``'n_outliers'`` (int): Number of outliers found.
-         * ``'all_stats'`` (pandas.DataFrame): Iteration-by-iteration details including
-           mean, sd, removed value/index, test statistic, critical value, and outlier flag.
+         * ``'all_stats'`` (list[dict]): Iteration-by-iteration details, each dict
+           containing keys: i, mean, sd, outlier_value, outlier_index, r, lambda, Outlier.
          * ``'bad_obs'`` (int): Count of non-finite values detected (always 0 if
            the function returns without error).
     """
@@ -104,22 +103,24 @@ def rosner_test(data: Union[np.ndarray, list], k: int = 3, alpha: float = 0.05) 
 
     n_outliers = np.sum(is_outlier)
 
-    df_stats = pd.DataFrame({
-        "i": np.arange(k),
-        "mean": mean_vals,
-        "sd": sd_vals,
-        "outlier_value": val_removed,
-        "outlier_index": obs_removed,
-        "r": r_vals,
-        "lambda": lambdas,
-        "Outlier": is_outlier
-    })
+    all_stats: List[Dict[str, Any]] = []
+    for j in range(k):
+        all_stats.append({
+            "i": j,
+            "mean": float(mean_vals[j]),
+            "sd": float(sd_vals[j]),
+            "outlier_value": float(val_removed[j]),
+            "outlier_index": float(obs_removed[j]),
+            "r": float(r_vals[j]),
+            "lambda": float(lambdas[j]),
+            "Outlier": bool(is_outlier[j]),
+        })
 
     results = {
         "stat": r_vals,
         "crit_value": lambdas,
         "n_outliers": n_outliers,
-        "all_stats": df_stats,
+        "all_stats": all_stats,
         "bad_obs": bad_obs,
     }
 
