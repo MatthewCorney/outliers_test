@@ -57,14 +57,22 @@ def test_grubbs_outlier_detection(grubbs_case):
 # Dixon test -- validated against R's outliers::dixon.test
 # ---------------------------------------------------------------------------
 
-def test_dixon_statistic(dixon_case):
+def test_dixon_statistic_and_decision(dixon_case):
+    """Validate Q statistic AND reject/no-reject decision against R."""
     data_array = dixon_case["data"]
     for mode_key, mode_value in dixon_case["dixon"].items():
         python_mode = mode_key.replace(".", "_")
         result = dixon_test(data=data_array, mode=python_mode)
         r_statistic = mode_value["statistic"][0]
+        r_p_value = mode_value["p_value"][0]
 
         assert np.allclose(result["statistic"], r_statistic, rtol=0, atol=0.01)
+
+        # Verify the rejection decision matches R
+        r_rejects = r_p_value < 0.05
+        assert result["reject"] == r_rejects, (
+            f"Mode={python_mode}: reject={result['reject']} but R p={r_p_value}"
+        )
 
 
 # ---------------------------------------------------------------------------
