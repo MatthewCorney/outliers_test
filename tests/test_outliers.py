@@ -5,6 +5,7 @@ import pytest
 
 from outlier_tests.dixon import dixon_test
 from outlier_tests.grubb import grubbs_test
+from outlier_tests.mad import mad_test
 from outlier_tests.rosner import rosner_test
 
 
@@ -151,3 +152,63 @@ class TestRosnerValidation:
         assert "r" in result["all_stats"][0]
         assert "lambda" in result["all_stats"][0]
         assert "Outlier" in result["all_stats"][0]
+
+
+class TestMADValidation:
+    def test_detects_obvious_outlier(self):
+        data = [1, 2, 3, 4, 5, 6, 7, 8, 9, 100]
+        result = mad_test(data)
+        assert result["n_outliers"] >= 1
+        assert 9 in result["outlier_indices"]  # index of 100
+
+    def test_no_outliers_in_clean_data(self):
+        data = [10.0, 10.1, 9.9, 10.2, 9.8, 10.05, 9.95]
+        result = mad_test(data)
+        assert result["n_outliers"] == 0
+        assert result["outlier_indices"] == []
+
+    def test_manual_z_score(self):
+        """Verify the formula: M_i = 0.6745 * (x_i - median) / MAD."""
+        data = [1, 2, 3, 4, 5]
+        result = mad_test(data)
+        med = np.median(data)
+        mad = np.median(np.abs(np.array(data) - med))
+        expected_z = 0.6745 * (np.array(data) - med) / mad
+        np.testing.assert_allclose(result["modified_z_scores"], expected_z)
+        assert result["median"] == med
+        assert result["mad"] == mad
+
+    def test_identical_values(self):
+        result = mad_test([5, 5, 5, 5, 5])
+        assert result["mad"] == 0.0
+        assert result["n_outliers"] == 0
+        assert np.all(result["modified_z_scores"] == 0.0)
+
+    def test_too_few_elements(self):
+        with pytest.raises(ValueError, match="at least 3"):
+            mad_test([1, 2])
+
+    def test_negative_threshold(self):
+        with pytest.raises(ValueError, match="threshold must be positive"):
+            mad_test([1, 2, 3], threshold=-1)
+
+    def test_zero_threshold(self):
+        with pytest.raises(ValueError, match="threshold must be positive"):
+            mad_test([1, 2, 3], threshold=0)
+
+    def test_custom_threshold(self):
+        data = [1, 2, 3, 4, 5, 6, 7, 8, 9, 50]
+        strict = mad_test(data, threshold=2.0)
+        lenient = mad_test(data, threshold=5.0)
+        assert strict["n_outliers"] >= lenient["n_outliers"]
+
+    def test_list_input(self):
+        result = mad_test([1, 2, 3, 4, 5, 6, 100])
+        assert isinstance(result["n_outliers"], int)
+        assert isinstance(result["outlier_indices"], list)
+
+    def test_return_keys(self):
+        result = mad_test([1, 2, 3, 4, 5])
+        expected_keys = {"modified_z_scores", "mad", "median",
+                         "outlier_indices", "outlier_values", "n_outliers"}
+        assert set(result.keys()) == expected_keys
