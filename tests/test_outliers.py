@@ -1,117 +1,139 @@
-import pytest
-import json
+"""Tests validating Python outlier tests against R reference implementations."""
+
 import numpy as np
 import pandas as pd
+import pytest
 
-from outlier_tests.rosner import rosner_test
-from outlier_tests.grubb import grubbs_test
 from outlier_tests.dixon import dixon_test
-
-PATH = r"test_data\results.json"
-
-
-@pytest.fixture(scope="module")
-def rosner_data():
-    """Fixture for data entries that contain 'rosner' key."""
-    with open(PATH, "r") as f:
-        results = json.load(f)
-    return [(data_name, data_results)
-            for data_name, data_results in results.items()
-            if 'rosner' in data_results]
+from outlier_tests.grubb import grubbs_test
+from outlier_tests.rosner import rosner_test
 
 
-@pytest.fixture(scope="module")
-def grubbs_data():
-    """Fixture for data entries that contain 'grubbs' key (referred as 'grubs' in JSON)."""
-    with open(PATH, "r") as f:
-        results = json.load(f)
-    return [(data_name, data_results)
-            for data_name, data_results in results.items()
-            if 'grubs' in data_results]
+# ---------------------------------------------------------------------------
+# Rosner test -- validated against R's EnvStats::rosnerTest
+# ---------------------------------------------------------------------------
+
+def test_rosner_q_values(rosner_case):
+    data_array = rosner_case["data"]
+    rosner_q = rosner_case["rosner"]["rosner_q"]
+
+    result = rosner_test(data=data_array, k=len(rosner_q))
+    q_result = [round(x, 4).item() for x in list(result["stat"])]
+
+    assert np.allclose(rosner_q, q_result, rtol=0, atol=0.01)
 
 
-@pytest.fixture(scope="module")
-def dixon_data():
-    """Fixture for data entries that contain 'dixon' key."""
-    with open(PATH, "r") as f:
-        results = json.load(f)
-    return [(data_name, data_results)
-            for data_name, data_results in results.items()
-            if 'dixon' in data_results]
+def test_rosner_outlier_count(rosner_case):
+    data_array = rosner_case["data"]
+    rosner_ref = rosner_case["rosner"]
+    all_stats = pd.DataFrame(rosner_ref["all_stats"])
+    expected_count = sum(all_stats["Outlier"])
+
+    result = rosner_test(data=data_array, k=len(rosner_ref["rosner_q"]))
+    assert result["n_outliers"] == expected_count
 
 
-def test_rosner(rosner_data):
-    """
-    Test that the Python rosner_test matches the R-based rosner output
-    (rosnor_q, number of outliers, etc.).
-    """
-    for data_name, data_results in rosner_data:
-        data_array = data_results["data"]
-        rosner_q = data_results["rosner"]["rosnor_q"]
-        all_stats = pd.DataFrame(data_results["rosner"]["all_stats"])
+# ---------------------------------------------------------------------------
+# Grubbs test -- validated against R's outliers::grubbs.test
+# ---------------------------------------------------------------------------
 
-        rosner_result = rosner_test(data=data_array, k=len(rosner_q))
-        q_result = [round(x, 4).item() for x in list(rosner_result["stat"])]
+def test_grubbs_zscore(grubbs_case):
+    data_array = grubbs_case["data"]
+    r_statistic = grubbs_case["grubbs"]["statistic"][0]
 
-        assert np.allclose(rosner_q, q_result, rtol=0, atol=0.01), (
-            f"\nData Name: {data_name}"
-            f"\nR Q-Values:      {rosner_q}"
-            f"\nPython Q-Values: {q_result}"
-        )
-
-        expected_outlier_count = sum(all_stats["Outlier"])
-        python_outlier_count = rosner_result["n_outliers"]
-        assert expected_outlier_count == python_outlier_count, (
-            f"\nData Name: {data_name}"
-            f"\nR Outlier Count:      {expected_outlier_count}"
-            f"\nPython Outlier Count: {python_outlier_count}"
-        )
+    result = grubbs_test(data_array)
+    assert np.allclose(result["zscore"], r_statistic, rtol=0, atol=0.01)
 
 
-def test_grubbs(grubbs_data):
-    """
-    Test that the Python grubbs_test matches the R-based grubbs output
-    (z-score, p-value < 0.05, etc.).
-    """
-    for data_name, data_results in grubbs_data:
-        data_array = data_results["data"]
+def test_grubbs_outlier_detection(grubbs_case):
+    data_array = grubbs_case["data"]
+    r_p_value = grubbs_case["grubbs"]["p_value"][0]
 
-        r_statistic = data_results["grubbs"]["statistic"][0]
-        r_p_value = data_results["grubbs"]["p_value"][0]
-
-        result = grubbs_test(data_array)
-        py_zscore = result["zscore"]
-        py_is_outlier = result["is_outlier"]
-
-        assert np.allclose(py_zscore, r_statistic, rtol=0, atol=0.01), (
-            f"\nData Name: {data_name}"
-            f"\nR z-score:      {round(r_statistic, 4)}"
-            f"\nPython z-score: {round(py_zscore, 4)}"
-        )
-        r_is_outlier = r_p_value < 0.05
-        assert py_is_outlier == r_is_outlier, (
-            f"\nData Name: {data_name}"
-            f"\nR Outlier:      {r_is_outlier}"
-            f"\nPython Outlier: {py_is_outlier}"
-        )
+    result = grubbs_test(data_array)
+    assert result["is_outlier"] == (r_p_value < 0.05)
 
 
-def test_dixon(dixon_data):
-    """
-    Test that the Python dixon_test matches the R-based dixon output
-    (statistic, p-value, etc.) for each mode.
-    """
-    for data_name, data_results in dixon_data:
-        data_array = data_results["data"]
-        for mode_key, mode_value in data_results["dixon"].items():
-            python_mode = mode_key.replace('.', '_')
-            result = dixon_test(data=data_array, mode=python_mode)
-            r_statistic = mode_value["statistic"][0]
-            r_p_value = mode_value["p_value"][0]
+# ---------------------------------------------------------------------------
+# Dixon test -- validated against R's outliers::dixon.test
+# ---------------------------------------------------------------------------
 
-            assert np.allclose(result["statistic"], r_statistic, rtol=0, atol=0.01), (
-                f"\nData Name: {data_name}"
-                f"\nMode: {python_mode}"
-                f"\nR Statistic:      {r_statistic}"
-                f"\nPython Statistic: {result['statistic']}"
-            )
+def test_dixon_statistic(dixon_case):
+    data_array = dixon_case["data"]
+    for mode_key, mode_value in dixon_case["dixon"].items():
+        python_mode = mode_key.replace(".", "_")
+        result = dixon_test(data=data_array, mode=python_mode)
+        r_statistic = mode_value["statistic"][0]
+
+        assert np.allclose(result["statistic"], r_statistic, rtol=0, atol=0.01)
+
+
+# ---------------------------------------------------------------------------
+# Error path / edge-case tests
+# ---------------------------------------------------------------------------
+
+class TestDixonValidation:
+    def test_too_few_elements(self):
+        with pytest.raises(ValueError, match="3 <= n <= 30"):
+            dixon_test([1, 2])
+
+    def test_too_many_elements(self):
+        with pytest.raises(ValueError, match="3 <= n <= 30"):
+            dixon_test(list(range(31)))
+
+    def test_invalid_mode(self):
+        with pytest.raises(ValueError, match="mode must be"):
+            dixon_test([1, 2, 3], mode="invalid")
+
+    def test_identical_values(self):
+        result = dixon_test([5, 5, 5, 5, 5])
+        assert result["reject"] is False
+        assert result["statistic"] == 0.0
+        assert result["outlier_index"] is None
+
+    def test_list_input(self):
+        result = dixon_test([1.0, 2.0, 3.0, 10.0])
+        assert isinstance(result["statistic"], float)
+
+
+class TestGrubbsValidation:
+    def test_too_few_elements(self):
+        with pytest.raises(ValueError, match="at least 3"):
+            grubbs_test([1, 2])
+
+    def test_identical_values(self):
+        with pytest.raises(ValueError, match="identical"):
+            grubbs_test([5, 5, 5, 5])
+
+    def test_list_input(self):
+        result = grubbs_test([1.0, 2.0, 3.0, 10.0])
+        assert isinstance(result["zscore"], float)
+
+
+class TestRosnerValidation:
+    def test_too_few_elements(self):
+        with pytest.raises(ValueError, match="at least 3"):
+            rosner_test([1, 2])
+
+    def test_k_too_large(self):
+        with pytest.raises(ValueError, match="k must be between"):
+            rosner_test([1, 2, 3, 4, 5], k=4)
+
+    def test_k_zero(self):
+        with pytest.raises(ValueError, match="k must be between"):
+            rosner_test([1, 2, 3, 4, 5], k=0)
+
+    def test_alpha_out_of_range(self):
+        with pytest.raises(ValueError, match="alpha must be in"):
+            rosner_test([1, 2, 3, 4, 5], alpha=1.5)
+
+    def test_nan_in_data(self):
+        with pytest.raises(ValueError, match="NaN/Inf"):
+            rosner_test([1, 2, float("nan"), 4, 5])
+
+    def test_inf_in_data(self):
+        with pytest.raises(ValueError, match="NaN/Inf"):
+            rosner_test([1, 2, float("inf"), 4, 5])
+
+    def test_list_input(self):
+        result = rosner_test([1, 2, 3, 4, 5, 6, 100], k=1)
+        assert isinstance(result["n_outliers"], (int, np.integer))

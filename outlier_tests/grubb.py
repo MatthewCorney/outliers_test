@@ -1,23 +1,29 @@
+"""Grubbs' test for detecting a single outlier in a univariate dataset."""
+
+import math
+from typing import Dict, Union
+
 import numpy as np
 from scipy.stats import t
-import math
-from typing import Union
 
 
-def grubbs_test(data: Union[np.ndarray, list], alpha: float = 0.05):
+def grubbs_test(data: Union[np.ndarray, list], alpha: float = 0.05) -> Dict[str, Union[float, bool, int]]:
     """
     Perform Grubbs' test for outlier detection.
 
     This function implements the two-sided version of Grubbs' test to detect
     a single outlier in a dataset. The test statistic is compared against a
-    critical value derived from Student's t-distribution to determine if an
-    extreme data point is an outlier.
+    critical value derived from Student's t-distribution.
 
-    :param data: array-like data
+    References:
+        Grubbs, F.E. (1950). "Sample criteria for testing outlying observations."
+        *Annals of Mathematical Statistics*, 21(1), 27-58.
+
+    :param data: array-like data (must have at least 3 elements).
     :param alpha: Significance level (default 0.05).
     :returns: A dictionary with the following keys:
         * ``'zscore'`` (float):
-          The maximum absolute z-score in the data.
+          The maximum absolute z-score in the data (Grubbs' G statistic).
         * ``'g_crit'`` (float):
           The critical value for the Grubbs' test.
         * ``'p_value'`` (float):
@@ -34,10 +40,13 @@ def grubbs_test(data: Union[np.ndarray, list], alpha: float = 0.05):
     if n < 3:
         raise ValueError("Grubbs' test requires at least 3 data points.")
 
-    mean_x = np.mean(data)
-    sd_x = np.std(data, ddof=1)
+    mean_x = np.mean(x)
+    sd_x = np.std(x, ddof=1)
 
-    z_scores = (data - mean_x) / sd_x
+    if sd_x == 0:
+        raise ValueError("All data points are identical; Grubbs' test is not applicable.")
+
+    z_scores = (x - mean_x) / sd_x
 
     idx_outlier = int(np.argmax(np.abs(z_scores)))
     g = abs(z_scores[idx_outlier])
@@ -52,10 +61,10 @@ def grubbs_test(data: Union[np.ndarray, list], alpha: float = 0.05):
     p_value = 2.0 * (1.0 - t.cdf(t_stat, df_t))
 
     return {
-        "z_score": float(g),
+        "zscore": float(g),
         "g_crit": float(g_crit),
         "p_value": float(p_value),
         "is_outlier": bool(is_outlier),
         "outlier_index": idx_outlier,
-        "outlier_value": float(data[idx_outlier]),
+        "outlier_value": float(x[idx_outlier]),
     }
