@@ -5,6 +5,7 @@ import pytest
 
 from outlier_tests.dixon import dixon_test
 from outlier_tests.grubb import grubbs_test
+from outlier_tests.iqr import iqr_test
 from outlier_tests.mad import mad_test
 from outlier_tests.rosner import rosner_test
 
@@ -210,5 +211,73 @@ class TestMADValidation:
     def test_return_keys(self):
         result = mad_test([1, 2, 3, 4, 5])
         expected_keys = {"modified_z_scores", "mad", "median",
+                         "outlier_indices", "outlier_values", "n_outliers"}
+        assert set(result.keys()) == expected_keys
+
+
+class TestIQRValidation:
+    def test_detects_obvious_outlier(self):
+        data = [1, 2, 3, 4, 5, 6, 7, 8, 9, 100]
+        result = iqr_test(data)
+        assert result["n_outliers"] >= 1
+        assert 9 in result["outlier_indices"]  # index of 100
+
+    def test_no_outliers_in_clean_data(self):
+        data = [10.0, 10.5, 11.0, 11.5, 12.0, 12.5, 13.0]
+        result = iqr_test(data)
+        assert result["n_outliers"] == 0
+
+    def test_manual_fences(self):
+        """Verify fences: lower = Q1 - 1.5*IQR, upper = Q3 + 1.5*IQR."""
+        data = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        result = iqr_test(data)
+        q1 = np.percentile(data, 25)
+        q3 = np.percentile(data, 75)
+        iqr = q3 - q1
+        assert result["q1"] == q1
+        assert result["q3"] == q3
+        assert result["iqr"] == iqr
+        assert result["lower_fence"] == q1 - 1.5 * iqr
+        assert result["upper_fence"] == q3 + 1.5 * iqr
+
+    def test_far_outlier_multiplier(self):
+        """k=3.0 should detect fewer outliers than k=1.5."""
+        data = [1, 2, 3, 4, 5, 6, 7, 8, 9, 50]
+        standard = iqr_test(data, k=1.5)
+        far = iqr_test(data, k=3.0)
+        assert standard["n_outliers"] >= far["n_outliers"]
+
+    def test_identical_values(self):
+        result = iqr_test([5, 5, 5, 5, 5])
+        assert result["iqr"] == 0.0
+        assert result["n_outliers"] == 0
+
+    def test_too_few_elements(self):
+        with pytest.raises(ValueError, match="at least 3"):
+            iqr_test([1, 2])
+
+    def test_negative_k(self):
+        with pytest.raises(ValueError, match="k must be positive"):
+            iqr_test([1, 2, 3], k=-1)
+
+    def test_zero_k(self):
+        with pytest.raises(ValueError, match="k must be positive"):
+            iqr_test([1, 2, 3], k=0)
+
+    def test_lower_outlier(self):
+        """Detect outlier below the lower fence."""
+        data = [1, 2, 3, 4, 5, 6, 7, 8, 9, -50]
+        result = iqr_test(data)
+        assert 9 in result["outlier_indices"]  # index of -50
+        assert -50.0 in result["outlier_values"]
+
+    def test_list_input(self):
+        result = iqr_test([1, 2, 3, 4, 5, 6, 100])
+        assert isinstance(result["n_outliers"], int)
+        assert isinstance(result["outlier_indices"], list)
+
+    def test_return_keys(self):
+        result = iqr_test([1, 2, 3, 4, 5])
+        expected_keys = {"q1", "q3", "iqr", "lower_fence", "upper_fence",
                          "outlier_indices", "outlier_values", "n_outliers"}
         assert set(result.keys()) == expected_keys
