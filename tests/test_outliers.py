@@ -1,7 +1,6 @@
 """Tests validating Python outlier tests against R reference implementations."""
 
 import numpy as np
-import pandas as pd
 import pytest
 
 from outlier_tests.dixon import dixon_test
@@ -26,8 +25,7 @@ def test_rosner_q_values(rosner_case):
 def test_rosner_outlier_count(rosner_case):
     data_array = rosner_case["data"]
     rosner_ref = rosner_case["rosner"]
-    all_stats = pd.DataFrame(rosner_ref["all_stats"])
-    expected_count = sum(all_stats["Outlier"])
+    expected_count = sum(row["Outlier"] for row in rosner_ref["all_stats"])
 
     result = rosner_test(data=data_array, k=len(rosner_ref["rosner_q"]))
     assert result["n_outliers"] == expected_count
@@ -145,3 +143,11 @@ class TestRosnerValidation:
     def test_list_input(self):
         result = rosner_test([1, 2, 3, 4, 5, 6, 100], k=1)
         assert isinstance(result["n_outliers"], (int, np.integer))
+
+    def test_all_stats_is_list_of_dicts(self):
+        result = rosner_test([1, 2, 3, 4, 5, 6, 100], k=2)
+        assert isinstance(result["all_stats"], list)
+        assert isinstance(result["all_stats"][0], dict)
+        assert "r" in result["all_stats"][0]
+        assert "lambda" in result["all_stats"][0]
+        assert "Outlier" in result["all_stats"][0]

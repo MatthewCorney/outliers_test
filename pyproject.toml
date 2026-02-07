@@ -10,7 +10,6 @@ packages = [{include = "outlier_tests"}]
 python = "^3.10"
 numpy = "^2.2.1"
 scipy = "^1.15.1"
-pandas = "^2.2.3"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.4"
