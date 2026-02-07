@@ -27,7 +27,7 @@ def grubbs_test(data: Union[np.ndarray, list], alpha: float = 0.05) -> Dict[str,
         * ``'g_crit'`` (float):
           The critical value for the Grubbs' test.
         * ``'p_value'`` (float):
-          The approximate two-sided p-value.
+          Approximate two-sided p-value (Bonferroni upper bound; conservative).
         * ``'is_outlier'`` (bool):
           True if the detected point is an outlier, False otherwise.
         * ``'outlier_index'`` (int):
@@ -57,8 +57,17 @@ def grubbs_test(data: Union[np.ndarray, list], alpha: float = 0.05) -> Dict[str,
 
     is_outlier = g > g_crit
 
-    t_stat = g * math.sqrt((n - 1) / n)
-    p_value = 2.0 * (1.0 - t.cdf(t_stat, df_t))
+    # Recover the underlying t-statistic from G using the exact relationship:
+    #   G = ((n-1)/sqrt(n)) * sqrt(t^2 / (n-2+t^2))
+    # Solving for t^2 gives:
+    s2 = n * g ** 2 / (n - 1) ** 2
+    if s2 >= 1.0:
+        p_value = 0.0
+    else:
+        t2 = (n - 2) * s2 / (1.0 - s2)
+        t_stat = math.sqrt(t2)
+        # Bonferroni correction: G is the max of n studentized deviations
+        p_value = min(1.0, 2.0 * n * (1.0 - t.cdf(t_stat, df_t)))
 
     return {
         "zscore": float(g),
