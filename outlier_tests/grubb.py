@@ -1,7 +1,7 @@
 """Grubbs' test for detecting a single outlier in a univariate dataset."""
 
 import math
-from typing import Dict, Union
+from typing import Dict, List, Union
 
 import numpy as np
 from scipy.stats import t
@@ -76,4 +76,90 @@ def grubbs_test(data: Union[np.ndarray, list], alpha: float = 0.05) -> Dict[str,
         "is_outlier": bool(is_outlier),
         "outlier_index": idx_outlier,
         "outlier_value": float(x[idx_outlier]),
+    }
+
+
+def grubbs_test_iterative(
+    data: Union[np.ndarray, list],
+    alpha: float = 0.05,
+    max_outliers: int = 0,
+) -> Dict[str, Union[List[Dict], List[int], np.ndarray, int]]:
+    """
+    Iterative Grubbs' test: repeatedly apply Grubbs' test, removing one
+    outlier at a time, until no more are detected or *max_outliers* is reached.
+
+    Each iteration tests H0: "no outliers remain in the (reduced) dataset"
+    at significance level *alpha*. The test stops when either Grubbs' test
+    fails to reject or the dataset is reduced to fewer than 3 observations.
+
+    References:
+        Grubbs, F.E. (1969). "Procedures for Detecting Outlying Observations
+        in Samples." *Technometrics*, 11(1), 1-21.
+
+    :param data: array-like data (must have at least 3 elements).
+    :param alpha: Significance level for each individual Grubbs' test
+        (default 0.05).
+    :param max_outliers: Maximum number of outliers to remove. 0 (default)
+        means no limit — iterate until the test stops rejecting.
+    :returns: A dictionary with the following keys:
+        * ``'iterations'`` (list[dict]): One dict per iteration with the
+          single-Grubbs result plus the ``'original_index'`` of the removed
+          point.
+        * ``'outlier_indices'`` (list[int]): Indices (in the original data)
+          of all detected outliers, in order of removal.
+        * ``'outlier_values'`` (numpy.ndarray): Corresponding values.
+        * ``'n_outliers'`` (int): Number of outliers detected.
+    """
+    x = np.asarray(data, dtype=float)
+    n = len(x)
+
+    if n < 3:
+        raise ValueError("Grubbs' test requires at least 3 data points.")
+    if max_outliers < 0:
+        raise ValueError(f"max_outliers must be >= 0, got {max_outliers}.")
+
+    # Track mapping from working array index → original index.
+    original_indices = np.arange(n)
+    working = x.copy()
+
+    iterations: List[Dict] = []
+    outlier_indices: List[int] = []
+    outlier_values: List[float] = []
+
+    while len(working) >= 3:
+        if max_outliers > 0 and len(outlier_indices) >= max_outliers:
+            break
+
+        try:
+            result = grubbs_test(working, alpha=alpha)
+        except ValueError:
+            # Remaining data is identical or otherwise untestable — stop.
+            break
+
+        if not result["is_outlier"]:
+            break
+
+        local_idx = result["outlier_index"]
+        orig_idx = int(original_indices[local_idx])
+
+        iteration_record = {
+            "original_index": orig_idx,
+            "outlier_value": result["outlier_value"],
+            "zscore": result["zscore"],
+            "g_crit": result["g_crit"],
+            "p_value": result["p_value"],
+        }
+        iterations.append(iteration_record)
+        outlier_indices.append(orig_idx)
+        outlier_values.append(result["outlier_value"])
+
+        # Remove the outlier from working arrays.
+        working = np.delete(working, local_idx)
+        original_indices = np.delete(original_indices, local_idx)
+
+    return {
+        "iterations": iterations,
+        "outlier_indices": outlier_indices,
+        "outlier_values": np.array(outlier_values),
+        "n_outliers": len(outlier_indices),
     }

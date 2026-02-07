@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from outlier_tests.dixon import dixon_test
-from outlier_tests.grubb import grubbs_test
+from outlier_tests.grubb import grubbs_test, grubbs_test_iterative
 from outlier_tests.iqr import iqr_test
 from outlier_tests.mad import mad_test
 from outlier_tests.rosner import rosner_test
@@ -280,4 +280,76 @@ class TestIQRValidation:
         result = iqr_test([1, 2, 3, 4, 5])
         expected_keys = {"q1", "q3", "iqr", "lower_fence", "upper_fence",
                          "outlier_indices", "outlier_values", "n_outliers"}
+        assert set(result.keys()) == expected_keys
+
+
+# ---------------------------------------------------------------------------
+# Iterative Grubbs test
+# ---------------------------------------------------------------------------
+
+class TestGrubbsIterativeValidation:
+    def test_detects_multiple_outliers(self):
+        """Dataset with two clear outliers should find both."""
+        data = [10, 11, 12, 10, 11, 12, 10, 11, 12, 10, 500, -400]
+        result = grubbs_test_iterative(data)
+        assert result["n_outliers"] >= 2
+        detected = set(result["outlier_indices"])
+        assert 10 in detected  # index of 500
+        assert 11 in detected  # index of -400
+
+    def test_no_outliers(self):
+        """Clean data should return zero outliers."""
+        data = [10.0, 10.1, 9.9, 10.2, 9.8, 10.05, 9.95]
+        result = grubbs_test_iterative(data)
+        assert result["n_outliers"] == 0
+        assert result["outlier_indices"] == []
+        assert result["iterations"] == []
+
+    def test_max_outliers_limit(self):
+        """Should stop after max_outliers even if more exist."""
+        data = [1, 2, 3, 4, 5, 6, 7, 8, 9, 100, -80, 200]
+        result = grubbs_test_iterative(data, max_outliers=1)
+        assert result["n_outliers"] == 1
+
+    def test_original_indices_preserved(self):
+        """Returned indices should map back to the original data."""
+        data = [1, 2, 3, 4, 5, 6, 7, 8, 9, 500]
+        result = grubbs_test_iterative(data)
+        for idx, val in zip(result["outlier_indices"],
+                            result["outlier_values"]):
+            assert data[idx] == val
+
+    def test_iterations_record(self):
+        """Each iteration should have the expected keys."""
+        data = [1, 2, 3, 4, 5, 100]
+        result = grubbs_test_iterative(data)
+        assert result["n_outliers"] >= 1
+        for it in result["iterations"]:
+            assert "original_index" in it
+            assert "outlier_value" in it
+            assert "zscore" in it
+            assert "g_crit" in it
+            assert "p_value" in it
+
+    def test_agrees_with_single_grubbs(self):
+        """With only one outlier present, should match single grubbs_test."""
+        data = [1, 2, 3, 4, 5, 6, 7, 8, 9, 100]
+        single = grubbs_test(data)
+        iterative = grubbs_test_iterative(data)
+        if single["is_outlier"]:
+            assert iterative["n_outliers"] >= 1
+            assert iterative["outlier_indices"][0] == single["outlier_index"]
+
+    def test_too_few_elements(self):
+        with pytest.raises(ValueError, match="at least 3"):
+            grubbs_test_iterative([1, 2])
+
+    def test_negative_max_outliers(self):
+        with pytest.raises(ValueError, match="max_outliers must be >= 0"):
+            grubbs_test_iterative([1, 2, 3], max_outliers=-1)
+
+    def test_return_keys(self):
+        result = grubbs_test_iterative([1, 2, 3, 4, 5])
+        expected_keys = {"iterations", "outlier_indices", "outlier_values",
+                         "n_outliers"}
         assert set(result.keys()) == expected_keys
