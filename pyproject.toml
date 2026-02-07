@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "outlier-tests"
 version = "0.1.0"
-description = ""
+description = "Statistical outlier detection tests (Dixon, Grubbs, Rosner)"
 authors = ["MatthewCorney <Matthew_corney@yahoo.co.uk>"]
 readme = "README.md"
 packages = [{include = "outlier_tests"}]
@@ -10,9 +10,29 @@ packages = [{include = "outlier_tests"}]
 python = "^3.10"
 numpy = "^2.2.1"
 scipy = "^1.15.1"
-pytest = "^8.3.4"
 pandas = "^2.2.3"
 
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.4"
+pytest-cov = "^6.0"
+ruff = "^0.9"
+mypy = "^1.14"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
 
 [build-system]
 requires = ["poetry-core"]

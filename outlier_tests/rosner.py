@@ -1,41 +1,48 @@
+"""Rosner's generalized ESD test for detecting multiple outliers."""
+
+from typing import Any, Dict, Union
+
 import numpy as np
 import pandas as pd
 from scipy.stats import t
+
 from outlier_tests.basic_logger import logger
-from typing import Union
 
 
-def rosner_test(data: Union[np.ndarray, list], k: int = 3, alpha: float = 0.05):
+def rosner_test(data: Union[np.ndarray, list], k: int = 3, alpha: float = 0.05) -> Dict[str, Any]:
     """
-    Rosner test for outlier detection.
+    Rosner's generalized extreme Studentized deviate (ESD) test for outlier detection.
 
-    :param data: array-like data
-    :param k: Maximum number of outliers to test
-    :param alpha: Significance level for two-sided test
+    References:
+        Rosner, B. (1983). "Percentage points for a generalized ESD many-outlier
+        procedure." *Technometrics*, 25(2), 165-172.
+
+    :param data: array-like data (must not contain NaN/Inf).
+    :param k: Maximum number of outliers to test (1 <= k <= n-2).
+    :param alpha: Significance level for two-sided test (0 < alpha < 1).
     :return: A dictionary with the following keys:
-         * ``'stat'``: array of R_i values (test statistics)
-         * ``'crit_value'``: array of lambda_i values (critical values)
-         * ``'n_outliers'``: number of outliers found
-         * ``'all_stats'``: a pandas DataFrame of iteration-by-iteration details
+         * ``'stat'`` (numpy.ndarray): R_i values (test statistics) for each iteration.
+         * ``'crit_value'`` (numpy.ndarray): Lambda_i values (critical values).
+         * ``'n_outliers'`` (int): Number of outliers found.
+         * ``'all_stats'`` (pandas.DataFrame): Iteration-by-iteration details including
+           mean, sd, removed value/index, test statistic, critical value, and outlier flag.
+         * ``'bad_obs'`` (int): Count of non-finite values detected (always 0 if
+           the function returns without error).
     """
     x = np.asarray(data, dtype=float)
     obs_num = np.arange(len(x)) + 1  # 1-based indices to mimic R
 
     if len(x) < 3:
-        logger.error('There must be at least 3 observations.)')
-        raise ValueError
+        raise ValueError("Rosner test requires at least 3 observations.")
     if k < 1 or k > (len(x) - 2):
-        logger.error('alpha must bein (0,1)')
-        raise ValueError
+        raise ValueError(f"k must be between 1 and {len(x) - 2} (n - 2), got {k}.")
     if not (0 < alpha < 1):
-        logger.error('alpha must bein (0,1) ')
-        raise ValueError
+        raise ValueError(f"alpha must be in (0, 1), got {alpha}.")
 
     mask_finite = np.isfinite(x)
     bad_obs = np.sum(~mask_finite)
     if bad_obs > 0:
-        logger.error('NA/NaN/Inf Should not be present in data')
-        raise ValueError
+        raise ValueError("Data must not contain NA/NaN/Inf values.")
     n = len(x)
     # Optional warnings about large k
     if k > 10 or k > (n // 2):

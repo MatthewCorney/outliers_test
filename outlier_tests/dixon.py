@@ -1,8 +1,9 @@
+"""Dixon's Q test for detecting a single outlier in small samples (n=3..30)."""
+
 import math
+from typing import Dict, Optional, Union
+
 import numpy as np
-from typing import Dict
-from typing import Optional
-from typing import Union
 from scipy.stats import t
 
 
@@ -15,17 +16,19 @@ def compute_q_critical(
     """
     Compute the approximate critical Q-value for Dixon's Q Test.
 
-    This function uses an approximate relationship to the Student's t-distribution.
-    By default, the degrees of freedom (``df``) is set to ``n - 2``.
+    Uses the t-distribution approximation described in:
+    Dixon, W.J. (1950). "Analysis of extreme values."
+    *Annals of Mathematical Statistics*, 21(4), 488-506.
+
+    Degrees of freedom default to ``n - 2`` following Rorabacher (1991).
 
     :param n: The sample size.
     :param alpha: Significance level (default 0.05).
     :param two_sided: If ``True``, use a two-sided alpha. Otherwise, use one-sided.
-    :param degrees_freedom: Degrees of freedom
-    :return:The approximate critical Q value for Dixon's Q Test as a float.
+    :param degrees_freedom: Degrees of freedom (default ``n - 2``).
+    :return: The approximate critical Q value for Dixon's Q Test as a float.
     """
     if degrees_freedom is None:
-        # Some references use n - 1; adjust as needed
         degrees_freedom = n - 2
 
     alpha_adj = alpha / 2 if two_sided else alpha
@@ -47,6 +50,10 @@ def dixon_test(
     r"""
     Perform Dixon's Q test for outlier detection.
 
+    References:
+        Dixon, W.J. (1950). *Annals of Mathematical Statistics*, 21(4), 488-506.
+        Rorabacher, D.B. (1991). *Analytical Chemistry*, 63(2), 139-146.
+
     :param data: array-like data
     :param alpha: Significance level (default 0.05).
     :param mode: The mode for the test. One of:
@@ -57,7 +64,8 @@ def dixon_test(
         A dictionary with the following keys:
         * ``'statistic'`` (float): The computed Dixon Q statistic.
         * ``'critical_value'`` (float): The approximate critical Q value.
-        * ``'p_value'`` (float): A very approximate p-value (discrete).
+        * ``'p_value'`` (float or None): None (exact p-value computation is not
+          supported for Dixon's Q; use ``reject`` for decision-making).
         * ``'reject'`` (bool): Whether to reject the null hypothesis (i.e., detect an outlier).
         * ``'outlier_index'`` (int or None): The index of the outlier if found, else None.
         * ``'outlier_value'`` (float or None): The value of the outlier if found, else None.
@@ -73,6 +81,17 @@ def dixon_test(
     # Sort data while retaining original indices
     sorted_indices = np.argsort(x)
     sorted_data = x[sorted_indices]
+
+    data_range = sorted_data[-1] - sorted_data[0]
+    if data_range == 0:
+        return {
+            "statistic": 0.0,
+            "critical_value": float(compute_q_critical(n, alpha, two_sided=(mode == "two_sided"))),
+            "p_value": 1.0,
+            "reject": False,
+            "outlier_index": None,
+            "outlier_value": None,
+        }
 
     # Decide how to compute Q and which side is candidate outlier
     if mode == "less":
@@ -125,8 +144,9 @@ def dixon_test(
     # Compare Q statistic to Q critical
     reject = q_stat >= q_crit
 
-    # Extremely approximate p-value: if reject, p_value <= alpha, else p_value > alpha
-    p_value = alpha if reject else 1.0
+    # Exact p-value computation is not straightforward for Dixon's Q test;
+    # return None to avoid misleading consumers.
+    p_value = None
 
     # If no outlier is found, reset to None
     if not reject:
@@ -136,7 +156,7 @@ def dixon_test(
     return {
         "statistic": float(q_stat),
         "critical_value": float(q_crit),
-        "p_value": float(p_value),
+        "p_value": p_value,
         "reject": bool(reject),
         "outlier_index": outlier_index,
         "outlier_value": outlier_value
